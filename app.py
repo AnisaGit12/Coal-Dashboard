@@ -46,10 +46,10 @@ st.markdown("""
 
 # 3. DEFINISI HALAMAN (Sistem Navigasi Baru)
 # Pastikan file-file ini ada di folder 'pages'
-home_page = st.Page("pages/home.py", title="Dashboard Utama", default=True)
-prod_page = st.Page("pages/production.py", title="Tren Produksi")
-clust_page = st.Page("pages/clustering.py", title="Analisis K-Means")
-report_page = st.Page("pages/report.py", title="Laporan Akhir",)
+home_page = st.Page("pages/home.py", title="Dashboard", default=True)
+prod_page = st.Page("pages/production.py", title="Produksi")
+clust_page = st.Page("pages/clustering.py", title="Operasional")
+report_page = st.Page("pages/report.py", title="Laporan",)
 
 # 4. EKSEKUSI NAVIGASI
 pg = st.navigation({
@@ -60,7 +60,6 @@ pg = st.navigation({
 # 5. BRANDING DI SIDEBAR
 with st.sidebar:
     st.markdown("# Coal Monitor")
-    st.caption("Production Management System v1.0")
     st.markdown("---")
     # Slot untuk info user atau logo tambahan
     st.write("**Role:** Mining Manager")
