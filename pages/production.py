@@ -1,149 +1,113 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
-# 1. KONFIGURASI HALAMAN & CSS CUSTOM
+# 1. KONFIGURASI HALAMAN
 st.set_page_config(layout="wide")
 
+# 2. CUSTOM CSS
 st.markdown("""
     <style>
-    .block-container {
-        max-width: 1200px;
-        padding-top: 2rem;
+    .block-container { max-width: 1200px; padding-top: 2rem; }
+    .metric-card {
+        background-color: #ffffff; padding: 20px; border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #f0f2f6;
     }
-    /* Styling Card Custom seperti Figma */
-    .kpi-card {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        border: 1px solid #f0f2f6;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-    }
-    .kpi-icon {
-        width: 40px;
-        height: 40px;
-        background-color: #f0f4ff;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        margin-bottom: 15px;
-    }
-    .kpi-label { color: #64748b; font-size: 14px; margin-bottom: 5px; }
-    .kpi-value { color: #1e293b; font-size: 24px; font-weight: bold; margin: 0; }
-    .kpi-delta { color: #94a3b8; font-size: 12px; margin-top: 5px; }
-    
-    /* Status Badge Khusus */
-    .status-high { color: #22c55e; font-weight: bold; font-size: 28px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. LOAD DATA
+# 3. LOAD DATA & CALCULATE METRICS
 def load_data():
-    df = pd.read_csv('dataset_with_clusters.csv')
-    df['date'] = pd.to_datetime(df['date'])
-    return df
+    try:
+        df = pd.read_csv('dataset_with_clusters.csv')
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Menghitung Jam Kerja Efektif (Asumsi 24 jam - Downtime)
+        df['effective_hrs'] = 24 - (df['actual_rain_hours'] + df['slippery_hours'])
+        df['effective_hrs'] = df['effective_hrs'].clip(lower=1)
+        
+        # Hitung Produktivitas per Jam
+        df['ton_per_hour'] = df['total_ton'] / df['effective_hrs']
+        return df
+    except:
+        return pd.DataFrame()
 
 df = load_data()
 
 if not df.empty:
-    # Logic Mapping Status
-    cluster_order = df.groupby('cluster')['total_ton'].mean().sort_values(ascending=False).index
-    mapping = {cluster_order[0]: "High", cluster_order[1]: "Medium", cluster_order[2]: "Low"}
-    
-    # Ambil data terbaru
+    # --- LOGIKA MAPPING STATUS ---
+    # Mengurutkan cluster agar 0,1,2 berubah jadi teks High, Medium, Low secara otomatis
+    means = df.groupby('cluster')['total_ton'].mean().sort_values(ascending=False)
+    mapping = {means.index[0]: "High", means.index[1]: "Medium", means.index[2]: "Low"}
+    df['Category'] = df['cluster'].map(mapping)
+
+    st.title("Production & Efficiency Analysis")
+    st.markdown("Analisis performa produksi batubara dan efisiensi jam kerja alat.")
+
+    # --- ROW 1: KPI CARDS ---
     latest = df.sort_values('date').iloc[-1]
-    avg_val = df['total_ton'].mean()
-
-    # --- HEADER ---
-    st.title("Coal Hauling Production Dashboard")
-    st.markdown("Real-time monitoring and insights for mining operations")
-    st.write("")
-
-    # --- ROW 1: FIGMA STYLE KPI CARDS ---
-    c1, c2, c3, c4 = st.columns(4, gap="medium")
-
+    c1, c2, c3 = st.columns(3)
+    
     with c1:
-        st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-icon">📊</div>
-                <div class="kpi-label">Total Production today</div>
-                <div class="kpi-value">{latest['total_ton']:,.0f}</div>
-                <div class="kpi-delta">tonnes/day</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        st.markdown(f"<div class='metric-card'><p style='color:gray; font-size:12px;'>Hourly Productivity</p><h3>{latest['ton_per_hour']:.1f} <small>Ton/Hr</small></h3></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-icon">📈</div>
-                <div class="kpi-label">Average Production</div>
-                <div class="kpi-value">{avg_val:,.0f}</div>
-                <div class="kpi-delta">tonnes/day</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        utilization = (latest['effective_hrs'] / 24) * 100
+        st.markdown(f"<div class='metric-card'><p style='color:gray; font-size:12px;'>Time Utilization</p><h3>{utilization:.1f} %</h3></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-icon">🚚</div>
-                <div class="kpi-label">Total Trips</div>
-                <div class="kpi-value">{latest['trip_day']:.0f}</div>
-                <div class="kpi-delta">trips today</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
-        status = mapping.get(latest['cluster'])
-        color_class = "status-high" if status == "High" else ""
-        st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-icon">✨</div>
-                <div class="kpi-label">Production Status</div>
-                <div class="status-high">{status}</div>
-                <div class="kpi-delta">● Live monitoring</div>
-            </div>
-        """, unsafe_allow_html=True)
+        status_color = "#22c55e" if latest['Category'] == "High" else "#f59e0b" if latest['Category'] == "Medium" else "#ef4444"
+        st.markdown(f"<div class='metric-card'><p style='color:gray; font-size:12px;'>Current Category</p><h3 style='color:{status_color}'>{latest['Category']}</h3></div>", unsafe_allow_html=True)
 
     st.write("---")
 
-    # --- ROW 2: PRODUCTION HISTORY TABLE ---
-    st.subheader("Recent Production History")
+    # --- ROW 2: HOURLY PRODUCTION & EFFICIENCY CHART ---
+    st.subheader("Hourly Production & Efficiency Trend")
     
-    # Menyiapkan DataFrame untuk tabel
-    table_df = df.sort_values('date', ascending=False).head(10).copy()
-    table_df['Status'] = table_df['cluster'].map(mapping)
-    table_df['Date'] = table_df['date'].dt.strftime('%b %d')
+    fig = go.Figure()
+    # Area Chart Produktivitas
+    fig.add_trace(go.Scatter(
+        x=df['date'], y=df['ton_per_hour'],
+        mode='lines+markers', name='Actual (Ton/Hr)',
+        line=dict(color='#2E5BFF', width=3),
+        fill='tozeroy', fillcolor='rgba(46, 91, 255, 0.1)'
+    ))
+    # Target Line (100 Ton/Hr)
+    fig.add_trace(go.Scatter(
+        x=df['date'], y=[100]*len(df),
+        mode='lines', name='Target (100 T/Hr)',
+        line=dict(color='#ef4444', width=2, dash='dot')
+    ))
+
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified", margin=dict(t=10, b=0))
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.write("---")
+
+    # --- ROW 3: PERFORMANCE ANALYSIS TABLE ---
+    st.subheader("Performance Analysis Record")
     
-    # Mengatur tampilan tabel dengan indikator warna (dot)
+    # Menyiapkan tabel untuk manajemen
+    table_df = df.sort_values('date', ascending=False).copy()
+    table_df['Date'] = table_df['date'].dt.strftime('%d %b %Y')
+    
+    
+
     st.dataframe(
-        table_df[['Date', 'total_ton', 'trip_day', 'Status']],
+        table_df[['Date', 'total_ton', 'ton_per_hour', 'actual_rain_hours', 'slippery_hours', 'Category']],
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Date": "Date",
-            "total_ton": st.column_config.NumberColumn("Tonnage", format="%d"),
-            "trip_day": st.column_config.NumberColumn("Trips", format="%d"),
-            "Status": st.column_config.SelectboxColumn(
-                "Status",
-                options=["High", "Medium", "Low"],
-                # Menampilkan dot warna di depan teks
-            )
+            "Date": "Tanggal Ops",
+            "total_ton": st.column_config.NumberColumn("Total Produksi (Ton)", format="%d"),
+            "ton_per_hour": st.column_config.ProgressColumn(
+                "Produktivitas (Ton/Jam)",
+                help="Produksi rata-rata per jam kerja efektif",
+                format="%.1f",
+                min_value=0,
+                max_value=200,
+            ),
+            "actual_rain_hours": "Hujan (Jam)",
+            "slippery_hours": "Slippery (Jam)",
+            "Category": "Kategori Produksi" # NAMA DIUBAH DI SINI
         }
     )
-
-    # --- ROW 3: QUICK INSIGHTS ---
-    st.write("")
-    with st.container():
-        st.markdown("""
-            <div style="background-color: #f0fdf4; padding: 20px; border-radius: 12px; border-left: 5px solid #22c55e;">
-                <h4 style="margin:0; color: #166534;">✅ Performance Excellent</h4>
-                <p style="margin:0; color: #166534; font-size: 14px;">Production consistently high this week. Current operations performing optimally.</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-else:
-    st.error("File 'dataset_with_clusters.csv' tidak ditemukan.")
