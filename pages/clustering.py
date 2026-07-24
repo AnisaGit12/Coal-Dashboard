@@ -80,7 +80,7 @@ with col_chart1:
         color="Kategori Kinerja",
         color_discrete_map=color_map,
         labels={"Total Ton Hauler Actual": "Total Produksi (Ton)", "Trip/day": "Jumlah Trip"},
-        title="Distribusi Historis Kinerja PT Bass"
+        title="Distribusi Historis Kinerja"
     )
     fig_scatter.update_layout(plot_bgcolor='white', margin=dict(t=40, b=0, l=0, r=0))
     fig_scatter.update_xaxes(showgrid=True, gridcolor='#f1f5f9')
