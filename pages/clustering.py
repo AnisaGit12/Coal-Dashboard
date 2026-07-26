@@ -1,128 +1,294 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import pickle
-import os
+import plotly.express as px
 
-# =========================
-# PAGE CONFIG
-# =========================
+
 st.set_page_config(
-    page_title="Peta Kinerja & Simulasi",
+    page_title="Clustering Analysis",
     layout="wide"
 )
 
-# =========================
-# CSS STYLING
-# =========================
-st.markdown("""
-<style>
-.kalkulator-box {
-    background-color: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 24px;
-    margin-top: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("Peta Kinerja & Simulasi Target")
-st.markdown("---")
 
 # =========================
 # LOAD DATA
 # =========================
+
 @st.cache_data
 def load_data():
-    df = pd.read_excel("hasil_cluster_final_fix.xlsx")
-    df.columns = df.columns.str.strip()
 
-    required_cols = ["Total Ton Hauler Actual", "Trip/day", "Cluster"]
-    for col in required_cols:
-        if col not in df.columns:
-            st.error(f"Kolom {col} tidak ditemukan di dataset")
-            st.stop()
+    df = pd.read_excel(
+        "hasil_cluster_final.xlsx"
+    )
 
-    df["Total Ton Hauler Actual"] = pd.to_numeric(df["Total Ton Hauler Actual"], errors="coerce").fillna(0)
-    df["Trip/day"] = pd.to_numeric(df["Trip/day"], errors="coerce").fillna(0)
+    df.columns = (
+        df.columns
+        .astype(str)
+        .str.strip()
+    )
 
-    # Mengubah angka cluster menjadi label bahasa awam
-    def label_cluster(x):
-        if x == 2: return "High (Aman)"
-        elif x == 1: return "Normal (Waspada)"
-        else: return "Low (Kritis)"
-    
-    df["Kategori Kinerja"] = df["Cluster"].apply(label_cluster)
+
+    df["Date"] = pd.to_datetime(
+        df["Date"],
+        errors="coerce"
+    )
+
+
+    df = df.dropna(
+        subset=["Date"]
+    )
+
+
+    numeric = [
+        "Actual Rain Hours",
+        "Slippery Hours",
+        "Rest Time",
+        "Trip/day",
+        "Total Ton Hauler Actual"
+    ]
+
+
+    for col in numeric:
+
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",",".")
+        )
+
+        df[col] = pd.to_numeric(
+            df[col],
+            errors="coerce"
+        )
+
+
+    df = df.fillna(0)
+
+
     return df
+
+
 
 df = load_data()
 
-# Pengaturan Warna Konsisten untuk seluruh grafik
-color_map = {
-    "High (Aman)": "#10b981",       # Hijau
-    "Normal (Waspada)": "#f59e0b",  # Kuning
-    "Low (Kritis)": "#ef4444"       # Merah
+
+
+# =========================
+# MODEL
+# =========================
+
+with open(
+    "scaler.pkl",
+    "rb"
+) as f:
+    scaler = pickle.load(f)
+
+
+
+with open(
+    "kmeans_model.pkl",
+    "rb"
+) as f:
+    kmeans = pickle.load(f)
+
+
+
+fitur = [
+
+    "Actual Rain Hours",
+    "Slippery Hours",
+    "Rest Time",
+    "Trip/day",
+    "Total Ton Hauler Actual"
+
+]
+
+
+
+X = df[fitur]
+
+
+X_scaled = scaler.transform(
+    X
+)
+
+
+
+df["Cluster"] = kmeans.predict(
+    X_scaled
+)
+
+
+
+# =========================
+# LABEL
+# =========================
+
+def label_cluster(x):
+
+    if x == 0:
+        return "Low"
+
+    elif x == 1:
+        return "Normal"
+
+    else:
+        return "High"
+
+
+
+df["Performance"] = (
+    df["Cluster"]
+    .apply(label_cluster)
+)
+
+
+
+warna = {
+
+    "Low":"#ef4444",
+
+    "Normal":"#f59e0b",
+
+    "High":"#10b981"
+
 }
 
-# =========================
-# ROW 1: GRAFIK SEBARAN & DISTRIBUSI
-# =========================
-col_chart1, col_chart2 = st.columns([2, 1])
 
-with col_chart1:
-    st.subheader("Peta Sebaran Kinerja Harian")
-    # Scatter plot yang lebih cantik dan bahasanya mudah dimengerti
-    fig_scatter = px.scatter(
-        df,
-        x="Total Ton Hauler Actual",
-        y="Trip/day",
-        color="Kategori Kinerja",
-        color_discrete_map=color_map,
-        labels={"Total Ton Hauler Actual": "Total Produksi (Ton)", "Trip/day": "Jumlah Trip"},
-        title="Distribusi Historis Kinerja"
+
+# =========================
+# HEADER
+# =========================
+
+st.title(
+    "📊 K-Means Cluster Performance"
+)
+
+
+st.markdown("---")
+
+
+
+# =========================
+# JUMLAH CLUSTER
+# =========================
+
+
+col1,col2 = st.columns(2)
+
+
+
+with col1:
+
+
+    jumlah = (
+        df["Performance"]
+        .value_counts()
+        .reset_index()
     )
-    fig_scatter.update_layout(plot_bgcolor='white', margin=dict(t=40, b=0, l=0, r=0))
-    fig_scatter.update_xaxes(showgrid=True, gridcolor='#f1f5f9')
-    fig_scatter.update_yaxes(showgrid=True, gridcolor='#f1f5f9')
-    st.plotly_chart(fig_scatter, use_container_width=True)
 
-with col_chart2:
-    st.subheader("Frekuensi Status")
-    cluster_count = df["Kategori Kinerja"].value_counts().reset_index()
-    cluster_count.columns = ["Kategori", "Jumlah Hari"]
-    
-    fig_bar = px.bar(
-        cluster_count,
-        x="Kategori",
+
+    jumlah.columns = [
+        "Cluster",
+        "Jumlah Hari"
+    ]
+
+
+    fig = px.bar(
+
+        jumlah,
+
+        x="Cluster",
+
         y="Jumlah Hari",
-        color="Kategori",
-        color_discrete_map=color_map,
+
+        color="Cluster",
+
+        color_discrete_map=warna,
+
         text="Jumlah Hari"
+
     )
-    fig_bar.update_layout(showlegend=False, plot_bgcolor='white', margin=dict(t=40, b=0, l=0, r=0))
-    fig_bar.update_xaxes(title="")
-    st.plotly_chart(fig_bar, use_container_width=True)
+
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+
+
+with col2:
+
+
+    fig2 = px.scatter(
+
+        df,
+
+        x="Total Ton Hauler Actual",
+
+        y="Trip/day",
+
+        color="Performance",
+
+        color_discrete_map=warna,
+
+        hover_data=[
+            "Date",
+            "Actual Rain Hours",
+            "Slippery Hours"
+        ]
+
+    )
+
+
+    st.plotly_chart(
+        fig2,
+        use_container_width=True
+    )
+
+
 
 # =========================
-# ROW 2: STANDAR KINERJA (FULL WIDTH)
+# PROFIL CLUSTER
 # =========================
-st.markdown("<br>", unsafe_allow_html=True)
 
-st.subheader("Standar Batas Kinerja")
-st.markdown("Rata-rata pencapaian untuk masing-masing kategori operasional berdasarkan analisis data historis:")
 
-# Menghitung nilai rata-rata sesungguhnya dari data
-cluster_summary = df.groupby("Kategori Kinerja").agg({
-    "Total Ton Hauler Actual": "mean",
-    "Trip/day": "mean"
-}).round(0).reset_index()
+st.subheader(
+    "Profil Rata-rata Cluster"
+)
 
-cluster_summary.columns = ["Kategori", "Rata-rata Tonase", "Rata-rata Trip"]
 
-# Mengurutkan tabel dari High ke Low
-cluster_summary['sort'] = cluster_summary['Kategori'].map({"High (Aman)": 1, "Normal (Waspada)": 2, "Low (Kritis)": 3})
-cluster_summary = cluster_summary.sort_values('sort').drop('sort', axis=1)
+profil = (
 
-# Tabel dirender langsung tanpa masuk ke dalam kolom agar melebar penuh
-st.dataframe(cluster_summary, use_container_width=True, hide_index=True)
+    df.groupby("Performance")[fitur]
+    .mean()
+    .round(2)
+
+)
+
+
+
+st.dataframe(
+    profil,
+    use_container_width=True
+)
+
+
+
+st.subheader(
+    "Detail Data Cluster"
+)
+
+
+st.dataframe(
+    df[
+        [
+        "Date",
+        "Total Ton Hauler Actual",
+        "Trip/day",
+        "Performance"
+        ]
+    ],
+    use_container_width=True
+)
